@@ -1,0 +1,5 @@
+node_modules/
+*.xlsx
+!fixtures/**
+.env
+.DS_Store

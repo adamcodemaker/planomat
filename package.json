@@ -1,0 +1,28 @@
+{
+  "name": "planlekcji",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Konwerter planu lekcji SP143 4B do ICS (Google Calendar)",
+  "scripts": {
+    "start": "tsx src/cli.ts",
+    "fetch": "tsx src/cli.ts --fetch --output docs/plan-4b.ics",
+    "convert": "tsx src/cli.ts --input plan.xlsx --output docs/plan-4b.ics",
+    "typecheck": "tsc --noEmit"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "dependencies": {
+    "@touch4it/ical-timezones": "^1.9.0",
+    "exceljs": "^4.4.0",
+    "ical-generator": "^9.0.0",
+    "luxon": "^3.5.0"
+  },
+  "devDependencies": {
+    "@types/luxon": "^3.7.5",
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.7.0"
+  }
+}
