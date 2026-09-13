@@ -1,44 +1,35 @@
-import {
-  globSync,
-  mkdirSync,
-  readFileSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
-import { join, resolve } from "node:path";
-import {
-  fetchLatestPlan,
-  validFromFromFilename,
-} from "./fetchLatestPlan.ts";
-import {
-  classSlug,
-  lessonsForGroup,
-  parseWorkbook,
-} from "./parsePlan.ts";
-import { toIcs } from "./toIcs.ts";
-import { GROUPS, type Group } from "./types.ts";
+import { existsSync, mkdirSync } from "node:fs";
+import { resolve } from "node:path";
+import { generateSchool, writeRootIndex } from "./core/pipeline.ts";
+import type { SchoolAdapter } from "./core/types.ts";
+import { getSchool, listSchools } from "./schools/registry.ts";
 
 type Args = {
   fetch: boolean;
+  all: boolean;
   input?: string;
   outputDir: string;
+  schoolId?: string;
   className?: string;
-  group?: Group;
+  groupId?: string;
 };
 
 function parseArgs(argv: string[]): Args {
   const args: Args = {
     fetch: false,
+    all: false,
     outputDir: "docs",
   };
 
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (arg === "--fetch") args.fetch = true;
+    else if (arg === "--all") args.all = true;
     else if (arg === "--input") args.input = argv[++i];
     else if (arg === "--output-dir") args.outputDir = argv[++i];
+    else if (arg === "--school") args.schoolId = argv[++i];
     else if (arg === "--class") args.className = argv[++i];
-    else if (arg === "--group") args.group = parseGroup(argv[++i]);
+    else if (arg === "--group") args.groupId = argv[++i];
     else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -48,33 +39,57 @@ function parseArgs(argv: string[]): Args {
   return args;
 }
 
-function parseGroup(raw: string | undefined): Group {
-  if (raw === "1" || raw === "2") return raw;
-  throw new Error("Grupa musi być 1 albo 2");
-}
-
 function printHelp(): void {
-  console.log(`Konwerter planu SP143 → ICS
+  const schoolIds = listSchools()
+    .map((school) => school.id)
+    .join(", ");
+  console.log(`Konwerter planu lekcji → ICS
 
 Użycie:
-  npx tsx src/cli.ts --fetch --output-dir docs
-  npx tsx src/cli.ts --input plan.xlsx --output-dir docs
+  npx tsx src/cli.ts --all --fetch --output-dir docs
+  npx tsx src/cli.ts --school sp143 --fetch --output-dir docs
+  npx tsx src/cli.ts --school sp143 --input plan.xlsx --output-dir docs
 
-Zapisuje docs/{klasa}/{grupa}.ics, np. docs/4b/1.ics i docs/4b/2.ics.
+Zapisuje docs/{szkoła}/{klasa}/{grupa}.ics, np. docs/sp143/4b/1.ics.
 
 Opcje:
-  --fetch              Pobierz najnowszy XLSX ze strony szkoły
-  --input <plik>       Użyj lokalnego XLSX
+  --all                Wszystkie zarejestrowane szkoły
+  --school <id>        Szkoła (${schoolIds}; domyślnie sp143)
+  --fetch              Pobierz najnowszy plan ze źródła szkoły
+  --input <plik>       Użyj lokalnego pliku (nie łączy się z --all)
   --output-dir <dir>   Katalog ICS (domyślnie docs)
   --class <nazwa>      Tylko ta klasa (domyślnie wszystkie)
-  --group <1|2>        Tylko ta grupa (domyślnie obie)
+  --group <id>         Tylko ta grupa (domyślnie wszystkie)
 `);
 }
 
-function cleanIcsTree(outputDir: string): void {
-  for (const file of globSync("**/*.ics", { cwd: outputDir })) {
-    rmSync(join(outputDir, file));
+function adaptersFromArgs(args: Args): SchoolAdapter[] {
+  if (args.all && args.schoolId) {
+    throw new Error("Nie łącz --all z --school");
   }
+  if (args.all && args.input) {
+    throw new Error("--input wymaga jednej szkoły (--school), nie --all");
+  }
+  if (args.all) return listSchools();
+  return [getSchool(args.schoolId ?? "sp143")];
+}
+
+async function payloadFor(
+  adapter: SchoolAdapter,
+  args: Args,
+): Promise<{ source: string; validFrom: string; data: unknown }> {
+  if (args.fetch) {
+    const payload = await adapter.fetch();
+    console.error(
+      `Pobrano ${adapter.displayName}: ${payload.source} (od ${payload.validFrom})`,
+    );
+    return payload;
+  }
+  const inputPath = resolve(args.input!);
+  if (!existsSync(inputPath)) {
+    throw new Error(`Nie znaleziono pliku ${inputPath}`);
+  }
+  return adapter.loadFile(inputPath);
 }
 
 async function main(): Promise<void> {
@@ -84,65 +99,25 @@ async function main(): Promise<void> {
     process.exit(1);
   }
 
-  let buffer: Buffer;
-  let source: string;
-  let planStart: string;
-
-  if (args.fetch) {
-    const latest = await fetchLatestPlan();
-    buffer = latest.buffer;
-    source = latest.url;
-    planStart = latest.validFrom;
-    console.error(`Pobrano ${latest.url} (od ${latest.validFrom})`);
-  } else {
-    const inputPath = resolve(args.input!);
-    buffer = readFileSync(inputPath);
-    source = inputPath;
-    planStart = validFromFromFilename(inputPath);
-  }
-
-  const workbook = await parseWorkbook(buffer);
-  const blocks = args.className
-    ? workbook.classes.filter(
-        (item) => item.className.toLowerCase() === args.className!.toLowerCase(),
-      )
-    : workbook.classes;
-  if (blocks.length === 0) {
-    throw new Error(
-      args.className
-        ? `Nie znaleziono klasy ${args.className} w planie`
-        : "Nie znaleziono żadnej klasy w planie",
-    );
-  }
-
-  const groups = args.group ? [args.group] : GROUPS;
+  const adapters = adaptersFromArgs(args);
   const outputDir = resolve(args.outputDir);
   mkdirSync(outputDir, { recursive: true });
-  if (!args.className && !args.group) {
-    cleanIcsTree(outputDir);
+
+  const results = [];
+  for (const adapter of adapters) {
+    const payload = await payloadFor(adapter, args);
+    const result = await generateSchool(adapter, payload, {
+      outputDir,
+      className: args.className,
+      groupId: args.groupId,
+    });
+    results.push(result);
+    console.error(`Źródło ${adapter.displayName}: ${result.source}`);
   }
 
-  for (const block of blocks) {
-    const slug = classSlug(block.className);
-    const classDir = join(outputDir, slug);
-    mkdirSync(classDir, { recursive: true });
-
-    for (const group of groups) {
-      const lessons = lessonsForGroup(block, group);
-      const ics = toIcs(lessons, {
-        planStart,
-        className: block.className,
-        group,
-      });
-      const outputPath = join(classDir, `${group}.ics`);
-      writeFileSync(outputPath, ics, "utf8");
-      console.error(
-        `Zapisano ${lessons.length} lekcji ${block.classLabel} grupa ${group} → ${outputPath}`,
-      );
-    }
+  if (!args.className && !args.groupId) {
+    writeRootIndex(outputDir, results);
   }
-
-  console.error(`Źródło: ${source}`);
 }
 
 main().catch((error: unknown) => {
