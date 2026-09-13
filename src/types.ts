@@ -1,5 +1,9 @@
 export type Weekday = 1 | 2 | 3 | 4 | 5;
 
+export type Group = "1" | "2";
+
+export const GROUPS: Group[] = ["1", "2"];
+
 export type HolidayRange = {
   date?: string;
   from?: string;
@@ -39,6 +43,24 @@ export type Lesson = {
   roomLabel: string;
   group?: string;
   classLabel: string;
+};
+
+export type LessonSlot = {
+  lessonNo: number;
+  start: string;
+  end: string;
+  variants: Map<Weekday, LessonVariant[]>;
+};
+
+export type ClassBlock = {
+  className: string;
+  classLabel: string;
+  weekdays: Weekday[];
+  slots: LessonSlot[];
+};
+
+export type WorkbookPlan = {
+  classes: ClassBlock[];
 };
 
 export type ParseResult = {

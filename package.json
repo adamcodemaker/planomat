@@ -3,11 +3,11 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Konwerter planu lekcji SP143 4B do ICS (Google Calendar)",
+  "description": "Konwerter planu lekcji SP143 do ICS (Google Calendar)",
   "scripts": {
     "start": "tsx src/cli.ts",
-    "fetch": "tsx src/cli.ts --fetch --output docs/plan-4b.ics",
-    "convert": "tsx src/cli.ts --input plan.xlsx --output docs/plan-4b.ics",
+    "fetch": "tsx src/cli.ts --fetch --output-dir docs",
+    "convert": "tsx src/cli.ts --input plan.xlsx --output-dir docs",
     "typecheck": "tsc --noEmit"
   },
   "engines": {

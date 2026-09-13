@@ -2,7 +2,8 @@ import ical, { ICalEventRepeatingFreq } from "ical-generator";
 import { getVtimezoneComponent } from "@touch4it/ical-timezones";
 import { DateTime } from "luxon";
 import { config } from "./config.ts";
-import type { HolidayRange, Lesson } from "./types.ts";
+import { classSlug } from "./parsePlan.ts";
+import type { Group, HolidayRange, Lesson } from "./types.ts";
 
 function expandHolidays(ranges: HolidayRange[], zone: string): DateTime[] {
   const dates: DateTime[] = [];
@@ -32,10 +33,6 @@ function firstOccurrence(planStart: DateTime, weekday: number): DateTime {
   return planStart.plus({ days: delta });
 }
 
-function slug(className: string): string {
-  return className.toLowerCase().replace(/\s+/g, "");
-}
-
 function eventDescription(lesson: Lesson): string {
   const lines = [
     `Nauczyciel: ${lesson.teacher || "—"}`,
@@ -50,16 +47,17 @@ function eventDescription(lesson: Lesson): string {
 
 export function toIcs(
   lessons: Lesson[],
-  options: { planStart: string; className?: string },
+  options: { planStart: string; className: string; group: Group },
 ): string {
   const zone = config.timezone;
-  const className = options.className ?? config.className;
+  const { className, group } = options;
   const planStart = DateTime.fromISO(options.planStart, { zone }).startOf("day");
   const until = DateTime.fromISO(config.yearEnd, { zone }).endOf("day");
   const holidays = expandHolidays(config.holidays, zone);
+  const slug = classSlug(className);
 
   const calendar = ical({
-    name: config.calendarName,
+    name: `Plan ${className} (grupa ${group})`,
     prodId: { company: "planlekcji", product: "SP143", language: "PL" },
     timezone: {
       name: zone,
@@ -79,7 +77,7 @@ export function toIcs(
       .map((date) => date.set(startHm));
 
     calendar.createEvent({
-      id: `sp143-${slug(className)}-${lesson.weekday}-${lesson.lessonNo}@planlekcji`,
+      id: `sp143-${slug}-${group}-${lesson.weekday}-${lesson.lessonNo}@planlekcji`,
       start,
       end,
       stamp: planStart.toUTC(),

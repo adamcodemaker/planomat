@@ -1,6 +1,15 @@
 import ExcelJS from "exceljs";
 import { config } from "./config.ts";
-import type { Lesson, LessonVariant, ParseResult, Weekday } from "./types.ts";
+import type {
+  ClassBlock,
+  Group,
+  Lesson,
+  LessonSlot,
+  LessonVariant,
+  ParseResult,
+  Weekday,
+  WorkbookPlan,
+} from "./types.ts";
 
 const LESSON_ROW_RE =
   /^\s*(\d+)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/;
@@ -76,6 +85,15 @@ function matchesClass(text: string, className: string): boolean {
   return new RegExp(`^${escaped}\\b`, "i").test(text);
 }
 
+export function classCode(header: string): string {
+  const match = header.match(/^(\d{1,2}[A-Ha-h])/i);
+  return match ? match[1].toUpperCase() : header;
+}
+
+export function classSlug(className: string): string {
+  return className.toLowerCase().replace(/\s+/g, "");
+}
+
 type DayColumn = {
   weekday: Weekday;
   n: number;
@@ -135,14 +153,18 @@ function displayRoom(room: string): string {
   return config.roomAliases[room] ?? (room ? `sala ${room}` : "");
 }
 
-export function pickVariant(variants: LessonVariant[]): LessonVariant | null {
+export function pickVariant(
+  variants: LessonVariant[],
+  group: Group,
+): LessonVariant | null {
   const nonempty = variants.filter((v) => v.subjectRaw);
   if (nonempty.length === 0) return null;
 
-  const group1 = nonempty.filter((v) => /1\/2/.test(v.subjectRaw));
-  if (group1.length > 0) return group1[0];
+  const tag = `${group}/2`;
+  const matching = nonempty.filter((v) => extractGroup(v.subjectRaw) === tag);
+  if (matching.length > 0) return matching[0];
 
-  const noGroup = nonempty.filter((v) => !/\d\/\d/.test(v.subjectRaw));
+  const noGroup = nonempty.filter((v) => !extractGroup(v.subjectRaw));
   if (noGroup.length > 0) return noGroup[0];
 
   return null;
@@ -156,55 +178,18 @@ function readVariant(grid: string[][], row: number, day: DayColumn): LessonVaria
   return { teacher, subjectRaw, room };
 }
 
-export async function parsePlan(
-  input: Buffer | string,
-  className = config.className,
-): Promise<ParseResult> {
-  const workbook = new ExcelJS.Workbook();
-  if (typeof input === "string") {
-    await workbook.xlsx.readFile(input);
-  } else {
-    await workbook.xlsx.load(input as unknown as ExcelJS.Buffer);
-  }
-
-  const worksheet =
-    workbook.worksheets.find((sheet) => /plan/i.test(sheet.name)) ??
-    workbook.worksheets[0];
-  if (!worksheet) {
-    throw new Error("Brak arkusza w pliku XLSX");
-  }
-
-  const grid = sheetToGrid(worksheet);
-  let classRow = -1;
-  let classLabel = "";
-
-  for (let row = 0; row < grid.length; row++) {
-    const text = getCell(grid, row, 0);
-    if (isClassHeader(text) && matchesClass(text, className)) {
-      classRow = row;
-      classLabel = text;
-      break;
-    }
-  }
-
-  if (classRow < 0) {
-    throw new Error(`Nie znaleziono klasy ${className} w planie`);
-  }
-
+function parseClassBlock(
+  grid: string[][],
+  classRow: number,
+  classLabel: string,
+): ClassBlock {
   const dayColumns = findDayColumns(grid, classRow + 1);
   if (dayColumns.length === 0) {
     throw new Error(`Nie znaleziono kolumn N/P/S dla ${classLabel}`);
   }
 
-  type Slot = {
-    lessonNo: number;
-    start: string;
-    end: string;
-    variants: Map<Weekday, LessonVariant[]>;
-  };
-
-  const slots: Slot[] = [];
-  let current: Slot | null = null;
+  const slots: LessonSlot[] = [];
+  let current: LessonSlot | null = null;
 
   for (let row = classRow + 3; row < grid.length; row++) {
     const first = getCell(grid, row, 0);
@@ -233,14 +218,23 @@ export async function parsePlan(
     }
   }
 
+  return {
+    className: classCode(classLabel),
+    classLabel,
+    weekdays: dayColumns.map((day) => day.weekday),
+    slots,
+  };
+}
+
+export function lessonsForGroup(block: ClassBlock, group: Group): Lesson[] {
   const lessons: Lesson[] = [];
-  for (const slot of slots) {
-    for (const day of dayColumns) {
-      const chosen = pickVariant(slot.variants.get(day.weekday) ?? []);
+  for (const slot of block.slots) {
+    for (const weekday of block.weekdays) {
+      const chosen = pickVariant(slot.variants.get(weekday) ?? [], group);
       if (!chosen) continue;
       lessons.push({
-        weekday: day.weekday,
-        weekdayName: WEEKDAY_LABEL[day.weekday],
+        weekday,
+        weekdayName: WEEKDAY_LABEL[weekday],
         lessonNo: slot.lessonNo,
         start: slot.start,
         end: slot.end,
@@ -250,11 +244,61 @@ export async function parsePlan(
         room: chosen.room,
         roomLabel: displayRoom(chosen.room),
         group: extractGroup(chosen.subjectRaw),
-        classLabel,
+        classLabel: block.classLabel,
       });
     }
   }
 
   lessons.sort((a, b) => a.weekday - b.weekday || a.lessonNo - b.lessonNo);
-  return { classLabel, lessons };
+  return lessons;
+}
+
+export async function parseWorkbook(
+  input: Buffer | string,
+): Promise<WorkbookPlan> {
+  const workbook = new ExcelJS.Workbook();
+  if (typeof input === "string") {
+    await workbook.xlsx.readFile(input);
+  } else {
+    await workbook.xlsx.load(input as unknown as ExcelJS.Buffer);
+  }
+
+  const worksheet =
+    workbook.worksheets.find((sheet) => /plan/i.test(sheet.name)) ??
+    workbook.worksheets[0];
+  if (!worksheet) {
+    throw new Error("Brak arkusza w pliku XLSX");
+  }
+
+  const grid = sheetToGrid(worksheet);
+  const classes: ClassBlock[] = [];
+
+  for (let row = 0; row < grid.length; row++) {
+    const text = getCell(grid, row, 0);
+    if (!isClassHeader(text)) continue;
+    classes.push(parseClassBlock(grid, row, text));
+  }
+
+  if (classes.length === 0) {
+    throw new Error("Nie znaleziono żadnej klasy w planie");
+  }
+
+  return { classes };
+}
+
+export async function parsePlan(
+  input: Buffer | string,
+  className = config.className,
+  group: Group = "1",
+): Promise<ParseResult> {
+  const workbook = await parseWorkbook(input);
+  const block = workbook.classes.find(
+    (item) =>
+      matchesClass(item.classLabel, className) ||
+      item.className.toLowerCase() === className.toLowerCase(),
+  );
+  if (!block) {
+    throw new Error(`Nie znaleziono klasy ${className} w planie`);
+  }
+  return { classLabel: block.classLabel, lessons: lessonsForGroup(block, group) };
 }
