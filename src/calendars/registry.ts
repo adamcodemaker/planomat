@@ -1,8 +1,10 @@
 import type { CalendarAdapter } from "../core/types.ts";
 import { sp143 } from "./sp143/index.ts";
+import { sp143Rok } from "./sp143-rok/index.ts";
 
 const calendars: Record<string, CalendarAdapter> = {
   sp143,
+  "sp143-rok": sp143Rok,
 };
 
 export function listCalendars(): CalendarAdapter[] {

@@ -38,13 +38,16 @@
     "10": ["16:50", "17:35"]
   },
   "holidays": [
+    { "date": "2026-10-14", "name": "Dzień Edukacji Narodowej" },
     { "date": "2026-11-11", "name": "Narodowe Święto Niepodległości" },
-    { "from": "2026-12-23", "to": "2026-12-31", "name": "zimowa przerwa świąteczna" },
-    { "date": "2027-01-01", "name": "Nowy Rok" },
-    { "date": "2027-01-06", "name": "Trzech Króli" },
-    { "from": "2027-02-01", "to": "2027-02-14", "name": "ferie zimowe (mazowieckie)" },
+    { "from": "2026-11-12", "to": "2026-11-13", "name": "dni opiekuńczo-wychowawcze" },
+    { "from": "2026-12-23", "to": "2027-01-03", "name": "zimowa przerwa świąteczna" },
+    { "date": "2027-01-06", "name": "Święto Trzech Króli" },
+    { "from": "2027-02-01", "to": "2027-02-14", "name": "ferie zimowe" },
     { "from": "2027-03-25", "to": "2027-03-30", "name": "wiosenna przerwa świąteczna" },
     { "date": "2027-05-03", "name": "Święto Konstytucji 3 Maja" },
-    { "date": "2027-05-27", "name": "Boże Ciało" }
+    { "from": "2027-05-10", "to": "2027-05-12", "name": "egzaminy ósmoklasisty" },
+    { "date": "2027-05-27", "name": "Boże Ciało" },
+    { "date": "2027-05-28", "name": "Dzień opiekuńczo-wychowawczy" }
   ]
 }

@@ -10,6 +10,8 @@ import { sp143Config } from "./config.ts";
 import { fetchLatestPlan, validFromFromFilename } from "./fetch.ts";
 import { lessonsForGroup, parseWorkbook } from "./parse.ts";
 import { GROUPS, type Lesson } from "./types.ts";
+import { fetchYearCalendar } from "../sp143-rok/fetch.ts";
+import { parseYearCalendarDocx } from "../sp143-rok/parse.ts";
 
 function eventDescription(lesson: Lesson): string {
   const lines = [
@@ -47,10 +49,22 @@ export const sp143: CalendarAdapter<Buffer> = {
 
   async fetch(): Promise<SourcePayload<Buffer>> {
     const latest = await fetchLatestPlan();
+    let holidays = sp143Config.holidays;
+    try {
+      const yearCal = await fetchYearCalendar();
+      const parsed = await parseYearCalendarDocx(yearCal.buffer, yearCal.url);
+      holidays = parsed.holidays;
+    } catch (error: unknown) {
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `Nie pobrano kalendarza roku szkolnego dla EXDATE planu lekcji: ${message}`,
+      );
+    }
     return {
       source: latest.url,
       validFrom: latest.validFrom,
       data: latest.buffer,
+      holidays,
     };
   },
 

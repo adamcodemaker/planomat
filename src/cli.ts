@@ -46,6 +46,7 @@ function printHelp(): void {
 Użycie:
   npx tsx src/cli.ts --all --fetch --output-dir docs
   npx tsx src/cli.ts --calendar sp143 --fetch --output-dir docs
+  npx tsx src/cli.ts --calendar sp143-rok --fetch --output-dir docs
   npx tsx src/cli.ts --calendar sp143 --input plan.xlsx --output-dir docs
 
 Zapisuje docs/{kalendarz}/{ścieżka}.ics, np. docs/sp143/4b/1.ics.

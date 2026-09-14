@@ -98,7 +98,13 @@ function addOneOffEvent(
   const day = DateTime.fromISO(event.date, { zone: options.zone }).startOf("day");
   const allDay = !event.start || !event.end;
   const start = allDay ? day : day.set(parseHm(event.start!));
-  const end = allDay ? day : day.set(parseHm(event.end!));
+  const end = allDay
+    ? event.endDate
+      ? DateTime.fromISO(event.endDate, { zone: options.zone })
+          .startOf("day")
+          .plus({ days: 1 })
+      : day
+    : day.set(parseHm(event.end!));
 
   calendar.createEvent({
     id: eventId(options.calendarId, feed, event),

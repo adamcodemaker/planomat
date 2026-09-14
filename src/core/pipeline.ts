@@ -97,7 +97,10 @@ export async function generateCalendar(
       planStart: payload.validFrom,
       calendarId: adapter.id,
       displayName: adapter.displayName,
-      config: adapter.config,
+      config: {
+        ...adapter.config,
+        holidays: payload.holidays ?? adapter.config.holidays,
+      },
     });
     const segments = feedPath(feed);
     const dir = join(options.outputDir, adapter.id, ...segments.slice(0, -1));

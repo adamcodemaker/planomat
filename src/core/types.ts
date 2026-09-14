@@ -17,6 +17,7 @@ export type SourcePayload<T = unknown> = {
   source: string;
   validFrom: string;
   data: T;
+  holidays?: HolidayRange[];
 };
 
 type CalendarEventBase = {
@@ -36,6 +37,7 @@ export type WeeklyEvent = CalendarEventBase & {
 export type OneOffEvent = CalendarEventBase & {
   kind: "oneOff";
   date: string;
+  endDate?: string;
   start?: string;
   end?: string;
 };
