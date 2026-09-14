@@ -1,13 +1,13 @@
 {
-  "name": "planlekcji",
+  "name": "planomat",
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "Konwerter planów lekcji do ICS (Google Calendar)",
+  "description": "Generator kalendarzy ICS (Planomat)",
   "scripts": {
     "start": "tsx src/cli.ts",
     "fetch": "tsx src/cli.ts --all --fetch --output-dir docs",
-    "convert": "tsx src/cli.ts --school sp143 --input plan.xlsx --output-dir docs",
+    "convert": "tsx src/cli.ts --calendar sp143 --input plan.xlsx --output-dir docs",
     "typecheck": "tsc --noEmit"
   },
   "engines": {

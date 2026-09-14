@@ -1,14 +1,15 @@
 import ExcelJS from "exceljs";
-import type { Lesson, Weekday } from "../../core/types.ts";
 import { sp143Config } from "./config.ts";
-import type { Group, LessonVariant, Sp143Config } from "./types.ts";
+import type { Group, Lesson, LessonVariant, Sp143Config } from "./types.ts";
+
+type SchoolWeekday = 1 | 2 | 3 | 4 | 5;
 
 const LESSON_ROW_RE =
   /^\s*(\d+)\s+(\d{1,2}:\d{2})\s*-\s*(\d{1,2}:\d{2})/;
 
 const CLASS_HEADER_RE = /^\d{1,2}[A-Ha-h]\b/;
 
-const DAY_NAMES: Record<string, Weekday> = {
+const DAY_NAMES: Record<string, SchoolWeekday> = {
   poniedziałek: 1,
   wtorek: 2,
   środa: 3,
@@ -16,7 +17,7 @@ const DAY_NAMES: Record<string, Weekday> = {
   piątek: 5,
 };
 
-const WEEKDAY_LABEL: Record<Weekday, string> = {
+const WEEKDAY_LABEL: Record<SchoolWeekday, string> = {
   1: "Poniedziałek",
   2: "Wtorek",
   3: "Środa",
@@ -27,7 +28,7 @@ const WEEKDAY_LABEL: Record<Weekday, string> = {
 type ClassBlock = {
   className: string;
   classLabel: string;
-  weekdays: Weekday[];
+  weekdays: SchoolWeekday[];
   slots: LessonSlot[];
 };
 
@@ -35,7 +36,7 @@ type LessonSlot = {
   lessonNo: number;
   start: string;
   end: string;
-  variants: Map<Weekday, LessonVariant[]>;
+  variants: Map<SchoolWeekday, LessonVariant[]>;
 };
 
 function cellText(value: unknown): string {
@@ -92,7 +93,7 @@ function classCode(header: string): string {
 }
 
 type DayColumn = {
-  weekday: Weekday;
+  weekday: SchoolWeekday;
   n: number;
   p: number;
   s: number;

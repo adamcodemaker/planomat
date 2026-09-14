@@ -1,4 +1,4 @@
-export type Weekday = 1 | 2 | 3 | 4 | 5;
+export type Weekday = 1 | 2 | 3 | 4 | 5 | 6 | 7;
 
 export type HolidayRange = {
   date?: string;
@@ -7,46 +7,53 @@ export type HolidayRange = {
   name?: string;
 };
 
-export type Lesson = {
-  weekday: Weekday;
-  weekdayName: string;
-  lessonNo: number;
-  start: string;
-  end: string;
-  subject: string;
-  subjectRaw: string;
-  teacher: string;
-  room: string;
-  roomLabel: string;
-  group?: string;
-  classLabel: string;
-};
-
-export type SchoolCalendarConfig = {
+export type CalendarConfig = {
   timezone: string;
-  yearEnd: string;
-  holidays: HolidayRange[];
+  yearEnd?: string;
+  holidays?: HolidayRange[];
 };
 
-export type SchoolPayload<T = unknown> = {
+export type SourcePayload<T = unknown> = {
   source: string;
   validFrom: string;
   data: T;
 };
 
-export type CalendarFeed = {
-  className: string;
-  classLabel: string;
-  groupId: string;
-  title: string;
-  lessons: Lesson[];
+type CalendarEventBase = {
+  summary: string;
+  description?: string;
+  location?: string;
+  uidKey: string;
 };
 
-export interface SchoolAdapter<T = unknown> {
+export type WeeklyEvent = CalendarEventBase & {
+  kind: "weekly";
+  weekday: Weekday;
+  start: string;
+  end: string;
+};
+
+export type OneOffEvent = CalendarEventBase & {
+  kind: "oneOff";
+  date: string;
+  start?: string;
+  end?: string;
+};
+
+export type CalendarEvent = WeeklyEvent | OneOffEvent;
+
+export type CalendarFeed = {
+  path: string[];
+  title: string;
+  section?: string;
+  events: CalendarEvent[];
+};
+
+export interface CalendarAdapter<T = unknown> {
   readonly id: string;
   readonly displayName: string;
-  readonly config: SchoolCalendarConfig;
-  fetch(): Promise<SchoolPayload<T>>;
-  loadFile(path: string): Promise<SchoolPayload<T>>;
-  parse(payload: SchoolPayload<T>): Promise<CalendarFeed[]>;
+  readonly config: CalendarConfig;
+  fetch(): Promise<SourcePayload<T>>;
+  loadFile?(path: string): Promise<SourcePayload<T>>;
+  parse(payload: SourcePayload<T>): Promise<CalendarFeed[]>;
 }

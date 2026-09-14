@@ -1,4 +1,4 @@
-import type { HolidayRange } from "../../core/types.ts";
+import type { HolidayRange, Weekday } from "../../core/types.ts";
 
 export type Sp143Config = {
   timezone: string;
@@ -19,4 +19,19 @@ export type LessonVariant = {
   teacher: string;
   subjectRaw: string;
   room: string;
+};
+
+export type Lesson = {
+  weekday: Weekday;
+  weekdayName: string;
+  lessonNo: number;
+  start: string;
+  end: string;
+  subject: string;
+  subjectRaw: string;
+  teacher: string;
+  room: string;
+  roomLabel: string;
+  group?: string;
+  classLabel: string;
 };

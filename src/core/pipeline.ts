@@ -6,102 +6,114 @@ import {
   writeFileSync,
 } from "node:fs";
 import { join } from "node:path";
-import { schoolIndexHtml, rootIndexHtml } from "./html.ts";
-import { classSlug } from "./slug.ts";
+import { calendarIndexHtml, rootIndexHtml } from "./html.ts";
+import { pathSlug } from "./slug.ts";
 import { toIcs } from "./toIcs.ts";
 import type {
+  CalendarAdapter,
   CalendarFeed,
-  SchoolAdapter,
-  SchoolPayload,
+  SourcePayload,
 } from "./types.ts";
 
 export type GenerateOptions = {
   outputDir: string;
-  className?: string;
-  groupId?: string;
+  path?: string;
 };
 
 export type GenerateResult = {
-  adapter: SchoolAdapter;
+  adapter: CalendarAdapter;
   source: string;
   validFrom: string;
   feeds: CalendarFeed[];
   written: string[];
 };
 
-function cleanSchoolIcs(outputDir: string, schoolId: string): void {
-  const schoolDir = join(outputDir, schoolId);
-  if (!existsSync(schoolDir)) return;
-  for (const file of globSync("**/*.ics", { cwd: schoolDir })) {
-    rmSync(join(schoolDir, file));
+function assertSafePath(segments: string[]): string[] {
+  if (segments.length === 0) {
+    throw new Error("Feed kalendarza musi mieć niepustą ścieżkę");
   }
+  for (const segment of segments) {
+    if (!segment || segment === "." || segment === ".." || segment.includes("/")) {
+      throw new Error(`Nieprawidłowy segment ścieżki kalendarza: ${segment}`);
+    }
+  }
+  return segments;
 }
 
-function matchesClass(feed: CalendarFeed, className: string): boolean {
-  return (
-    feed.className.toLowerCase() === className.toLowerCase() ||
-    feed.classLabel.toLowerCase().startsWith(className.toLowerCase())
-  );
+function feedPath(feed: CalendarFeed): string[] {
+  return assertSafePath(feed.path.map(pathSlug));
+}
+
+function matchesPath(feed: CalendarFeed, pathFilter: string): boolean {
+  const filter = pathFilter
+    .split("/")
+    .filter(Boolean)
+    .map(pathSlug);
+  if (filter.length === 0) return true;
+  const segments = feedPath(feed);
+  return filter.every((segment, index) => segments[index] === segment);
+}
+
+function cleanCalendarIcs(outputDir: string, calendarId: string): void {
+  const calendarDir = join(outputDir, calendarId);
+  if (!existsSync(calendarDir)) return;
+  for (const file of globSync("**/*.ics", { cwd: calendarDir })) {
+    rmSync(join(calendarDir, file));
+  }
 }
 
 export function filterFeeds(
   feeds: CalendarFeed[],
-  options: { className?: string; groupId?: string },
+  options: { path?: string },
 ): CalendarFeed[] {
   return feeds.filter((feed) => {
-    if (options.className && !matchesClass(feed, options.className)) return false;
-    if (options.groupId && feed.groupId !== options.groupId) return false;
+    if (options.path && !matchesPath(feed, options.path)) return false;
     return true;
   });
 }
 
-export async function generateSchool(
-  adapter: SchoolAdapter,
-  payload: SchoolPayload,
+export async function generateCalendar(
+  adapter: CalendarAdapter,
+  payload: SourcePayload,
   options: GenerateOptions,
 ): Promise<GenerateResult> {
   const allFeeds = await adapter.parse(payload);
   const feeds = filterFeeds(allFeeds, options);
   if (feeds.length === 0) {
     throw new Error(
-      options.className || options.groupId
-        ? `Nie znaleziono kalendarzy dla ${adapter.displayName}` +
-          (options.className ? ` klasa ${options.className}` : "") +
-          (options.groupId ? ` grupa ${options.groupId}` : "")
-        : `Nie znaleziono żadnej klasy w planie ${adapter.displayName}`,
+      options.path
+        ? `Nie znaleziono kalendarzy dla ${adapter.displayName} (ścieżka ${options.path})`
+        : `Nie znaleziono żadnego kalendarza w ${adapter.displayName}`,
     );
   }
 
   mkdirSync(options.outputDir, { recursive: true });
-  const filtered = Boolean(options.className || options.groupId);
-  if (!filtered) cleanSchoolIcs(options.outputDir, adapter.id);
+  const filtered = Boolean(options.path);
+  if (!filtered) cleanCalendarIcs(options.outputDir, adapter.id);
 
   const written: string[] = [];
   for (const feed of feeds) {
     const ics = toIcs(feed, {
       planStart: payload.validFrom,
-      schoolId: adapter.id,
+      calendarId: adapter.id,
       displayName: adapter.displayName,
       config: adapter.config,
     });
-    const classDir = join(
-      options.outputDir,
-      adapter.id,
-      classSlug(feed.className),
-    );
-    mkdirSync(classDir, { recursive: true });
-    const outputPath = join(classDir, `${feed.groupId}.ics`);
+    const segments = feedPath(feed);
+    const dir = join(options.outputDir, adapter.id, ...segments.slice(0, -1));
+    mkdirSync(dir, { recursive: true });
+    const outputPath = join(dir, `${segments.at(-1)}.ics`);
     writeFileSync(outputPath, ics, "utf8");
     written.push(outputPath);
     console.error(
-      `Zapisano ${feed.lessons.length} lekcji ${feed.title} → ${outputPath}`,
+      `Zapisano ${feed.events.length} wydarzeń ${feed.title} → ${outputPath}`,
     );
   }
 
   if (!filtered) {
     writeFileSync(
       join(options.outputDir, adapter.id, "index.html"),
-      schoolIndexHtml(adapter, feeds),
+      calendarIndexHtml(adapter, feeds),
       "utf8",
     );
   }

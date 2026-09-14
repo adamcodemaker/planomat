@@ -1,17 +1,16 @@
 import { existsSync, mkdirSync } from "node:fs";
 import { resolve } from "node:path";
-import { generateSchool, writeRootIndex } from "./core/pipeline.ts";
-import type { SchoolAdapter } from "./core/types.ts";
-import { getSchool, listSchools } from "./schools/registry.ts";
+import { generateCalendar, writeRootIndex } from "./core/pipeline.ts";
+import type { CalendarAdapter } from "./core/types.ts";
+import { getCalendar, listCalendars } from "./calendars/registry.ts";
 
 type Args = {
   fetch: boolean;
   all: boolean;
   input?: string;
   outputDir: string;
-  schoolId?: string;
-  className?: string;
-  groupId?: string;
+  calendarId?: string;
+  path?: string;
 };
 
 function parseArgs(argv: string[]): Args {
@@ -27,9 +26,8 @@ function parseArgs(argv: string[]): Args {
     else if (arg === "--all") args.all = true;
     else if (arg === "--input") args.input = argv[++i];
     else if (arg === "--output-dir") args.outputDir = argv[++i];
-    else if (arg === "--school") args.schoolId = argv[++i];
-    else if (arg === "--class") args.className = argv[++i];
-    else if (arg === "--group") args.groupId = argv[++i];
+    else if (arg === "--calendar") args.calendarId = argv[++i];
+    else if (arg === "--path") args.path = argv[++i];
     else if (arg === "--help" || arg === "-h") {
       printHelp();
       process.exit(0);
@@ -40,42 +38,41 @@ function parseArgs(argv: string[]): Args {
 }
 
 function printHelp(): void {
-  const schoolIds = listSchools()
-    .map((school) => school.id)
+  const calendarIds = listCalendars()
+    .map((calendar) => calendar.id)
     .join(", ");
-  console.log(`Konwerter planu lekcji → ICS
+  console.log(`Planomat — konwerter kalendarzy → ICS
 
 Użycie:
   npx tsx src/cli.ts --all --fetch --output-dir docs
-  npx tsx src/cli.ts --school sp143 --fetch --output-dir docs
-  npx tsx src/cli.ts --school sp143 --input plan.xlsx --output-dir docs
+  npx tsx src/cli.ts --calendar sp143 --fetch --output-dir docs
+  npx tsx src/cli.ts --calendar sp143 --input plan.xlsx --output-dir docs
 
-Zapisuje docs/{szkoła}/{klasa}/{grupa}.ics, np. docs/sp143/4b/1.ics.
+Zapisuje docs/{kalendarz}/{ścieżka}.ics, np. docs/sp143/4b/1.ics.
 
 Opcje:
-  --all                Wszystkie zarejestrowane szkoły
-  --school <id>        Szkoła (${schoolIds}; domyślnie sp143)
-  --fetch              Pobierz najnowszy plan ze źródła szkoły
+  --all                Wszystkie zarejestrowane kalendarze
+  --calendar <id>      Kalendarz (${calendarIds}; domyślnie sp143)
+  --fetch              Pobierz najnowsze dane ze źródła kalendarza
   --input <plik>       Użyj lokalnego pliku (nie łączy się z --all)
   --output-dir <dir>   Katalog ICS (domyślnie docs)
-  --class <nazwa>      Tylko ta klasa (domyślnie wszystkie)
-  --group <id>         Tylko ta grupa (domyślnie wszystkie)
+  --path <ścieżka>     Tylko ta ścieżka lub jej prefiks (np. 4b albo 4b/1)
 `);
 }
 
-function adaptersFromArgs(args: Args): SchoolAdapter[] {
-  if (args.all && args.schoolId) {
-    throw new Error("Nie łącz --all z --school");
+function adaptersFromArgs(args: Args): CalendarAdapter[] {
+  if (args.all && args.calendarId) {
+    throw new Error("Nie łącz --all z --calendar");
   }
   if (args.all && args.input) {
-    throw new Error("--input wymaga jednej szkoły (--school), nie --all");
+    throw new Error("--input wymaga jednego kalendarza (--calendar), nie --all");
   }
-  if (args.all) return listSchools();
-  return [getSchool(args.schoolId ?? "sp143")];
+  if (args.all) return listCalendars();
+  return [getCalendar(args.calendarId ?? "sp143")];
 }
 
 async function payloadFor(
-  adapter: SchoolAdapter,
+  adapter: CalendarAdapter,
   args: Args,
 ): Promise<{ source: string; validFrom: string; data: unknown }> {
   if (args.fetch) {
@@ -84,6 +81,11 @@ async function payloadFor(
       `Pobrano ${adapter.displayName}: ${payload.source} (od ${payload.validFrom})`,
     );
     return payload;
+  }
+  if (!adapter.loadFile) {
+    throw new Error(
+      `${adapter.displayName} nie obsługuje --input (brak loadFile)`,
+    );
   }
   const inputPath = resolve(args.input!);
   if (!existsSync(inputPath)) {
@@ -106,16 +108,15 @@ async function main(): Promise<void> {
   const results = [];
   for (const adapter of adapters) {
     const payload = await payloadFor(adapter, args);
-    const result = await generateSchool(adapter, payload, {
+    const result = await generateCalendar(adapter, payload, {
       outputDir,
-      className: args.className,
-      groupId: args.groupId,
+      path: args.path,
     });
     results.push(result);
     console.error(`Źródło ${adapter.displayName}: ${result.source}`);
   }
 
-  if (!args.className && !args.groupId) {
+  if (!args.path) {
     writeRootIndex(outputDir, results);
   }
 }

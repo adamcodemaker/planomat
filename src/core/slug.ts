@@ -1,3 +1,3 @@
-export function classSlug(className: string): string {
-  return className.toLowerCase().replace(/\s+/g, "");
+export function pathSlug(segment: string): string {
+  return segment.toLowerCase().replace(/\s+/g, "");
 }

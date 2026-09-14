@@ -1,4 +1,4 @@
-name: Update plan ICS
+name: Update calendars ICS
 
 on:
   schedule:
@@ -10,7 +10,7 @@ on:
       - "src/**"
       - "package.json"
       - "package-lock.json"
-      - ".github/workflows/update-plan.yml"
+      - ".github/workflows/update-calendars.yml"
 
 permissions:
   contents: read
@@ -34,7 +34,7 @@ jobs:
 
       - run: npm ci
       - run: npm run typecheck
-      - name: Fetch school plans and generate ICS
+      - name: Fetch calendars and generate ICS
         run: npm run fetch
 
       - uses: actions/configure-pages@v5

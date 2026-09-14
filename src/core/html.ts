@@ -1,5 +1,5 @@
-import type { CalendarFeed, SchoolAdapter } from "./types.ts";
-import { classSlug } from "./slug.ts";
+import type { CalendarAdapter, CalendarFeed } from "./types.ts";
+import { pathSlug } from "./slug.ts";
 
 function escapeHtml(text: string): string {
   return text
@@ -37,10 +37,31 @@ ${body}  </body>
 `;
 }
 
+function feedPathLabel(feed: CalendarFeed): string {
+  return feed.path.map(pathSlug).join("/");
+}
+
+function feedHref(feed: CalendarFeed): string {
+  const href = `./${feedPathLabel(feed)}.ics`;
+  return escapeHtml(href);
+}
+
+function feedListItems(feeds: CalendarFeed[]): string {
+  return [...feeds]
+    .sort((a, b) =>
+      feedPathLabel(a).localeCompare(feedPathLabel(b), "pl", { numeric: true }),
+    )
+    .map(
+      (feed) =>
+        `        <li><a href="${feedHref(feed)}">${escapeHtml(feedPathLabel(feed))}.ics</a> — ${escapeHtml(feed.title)}</li>`,
+    )
+    .join("\n");
+}
+
 export function rootIndexHtml(
-  schools: { adapter: SchoolAdapter; feedCount: number }[],
+  calendars: { adapter: CalendarAdapter; feedCount: number }[],
 ): string {
-  const items = schools
+  const items = calendars
     .map(
       ({ adapter, feedCount }) =>
         `      <li><a href="./${escapeHtml(adapter.id)}/">${escapeHtml(adapter.displayName)}</a> — ${feedCount} kalendarzy</li>`,
@@ -48,11 +69,11 @@ export function rootIndexHtml(
     .join("\n");
 
   return page(
-    "Plan lekcji — ICS",
-    `    <h1>Plan lekcji</h1>
+    "Planomat — ICS",
+    `    <h1>Planomat</h1>
     <p>
       Kalendarze ICS do subskrypcji w Google Calendar. Adres:
-      <code>/{szkoła}/{klasa}/{grupa}.ics</code>.
+      <code>/{kalendarz}/{ścieżka}.ics</code>.
     </p>
     <ul>
 ${items}
@@ -65,49 +86,51 @@ ${items}
   );
 }
 
-export function schoolIndexHtml(
-  adapter: SchoolAdapter,
+export function calendarIndexHtml(
+  adapter: CalendarAdapter,
   feeds: CalendarFeed[],
 ): string {
-  const byClass = new Map<string, CalendarFeed[]>();
+  const bySection = new Map<string, CalendarFeed[]>();
+  const unsectioned: CalendarFeed[] = [];
   for (const feed of feeds) {
-    const key = feed.className;
-    const list = byClass.get(key) ?? [];
-    list.push(feed);
-    byClass.set(key, list);
+    if (feed.section) {
+      const list = bySection.get(feed.section) ?? [];
+      list.push(feed);
+      bySection.set(feed.section, list);
+    } else {
+      unsectioned.push(feed);
+    }
   }
 
-  const classes = [...byClass.entries()].sort(([a], [b]) =>
+  const sections = [...bySection.entries()].sort(([a], [b]) =>
     a.localeCompare(b, "pl", { numeric: true }),
   );
 
-  const sections = classes
-    .map(([className, classFeeds]) => {
-      const slug = classSlug(className);
-      const links = [...classFeeds]
-        .sort((a, b) => a.groupId.localeCompare(b.groupId, "pl", { numeric: true }))
-        .map((feed) => {
-          const href = `./${escapeHtml(slug)}/${escapeHtml(feed.groupId)}.ics`;
-          return `        <li><a href="${href}">${escapeHtml(slug)}/${escapeHtml(feed.groupId)}.ics</a> — ${escapeHtml(feed.title)}</li>`;
-        })
-        .join("\n");
-      return `    <h2>${escapeHtml(className)}</h2>
+  const sectionHtml = sections
+    .map(
+      ([section, sectionFeeds]) => `    <h2>${escapeHtml(section)}</h2>
     <ul>
-${links}
-    </ul>`;
-    })
+${feedListItems(sectionFeeds)}
+    </ul>`,
+    )
     .join("\n");
 
+  const unsectionedHtml =
+    unsectioned.length === 0
+      ? ""
+      : `${sections.length > 0 ? "\n" : ""}    <ul>
+${feedListItems(unsectioned)}
+    </ul>`;
+
   return page(
-    `Plan lekcji ${adapter.displayName} — ICS`,
-    `    <p><a href="../">← szkoły</a></p>
-    <h1>Plan lekcji ${escapeHtml(adapter.displayName)}</h1>
+    `${adapter.displayName} — Planomat`,
+    `    <p><a href="../">← kalendarze</a></p>
+    <h1>${escapeHtml(adapter.displayName)}</h1>
     <p>
       Adres pliku:
-      <code>/${escapeHtml(adapter.id)}/{klasa}/{grupa}.ics</code>
-      — klasa małymi literami.
+      <code>/${escapeHtml(adapter.id)}/{ścieżka}.ics</code>
     </p>
-${sections}
+${sectionHtml}${unsectionedHtml}
     <p>
       W Google Calendar: Inne kalendarze → plus → Z URL → wklej pełny adres
       wybranego pliku <code>.ics</code>.

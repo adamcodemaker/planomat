@@ -2,7 +2,7 @@ import { sp143Config } from "./config.ts";
 
 const DATE_IN_NAME_RE = /od-(\d{2})\.(\d{2})\.(\d{4})/;
 const USER_AGENT =
-  "Mozilla/5.0 (compatible; planlekcji/1.0; +https://github.com/)";
+  "Mozilla/5.0 (compatible; planomat/1.0; +https://github.com/)";
 
 export type LatestPlan = {
   url: string;

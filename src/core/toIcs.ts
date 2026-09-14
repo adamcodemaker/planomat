@@ -1,12 +1,14 @@
 import ical, { ICalEventRepeatingFreq } from "ical-generator";
 import { getVtimezoneComponent } from "@touch4it/ical-timezones";
 import { DateTime } from "luxon";
-import { classSlug } from "./slug.ts";
+import { pathSlug } from "./slug.ts";
 import type {
+  CalendarConfig,
+  CalendarEvent,
   CalendarFeed,
   HolidayRange,
-  Lesson,
-  SchoolCalendarConfig,
+  OneOffEvent,
+  WeeklyEvent,
 } from "./types.ts";
 
 function expandHolidays(ranges: HolidayRange[], zone: string): DateTime[] {
@@ -24,7 +26,7 @@ function expandHolidays(ranges: HolidayRange[], zone: string): DateTime[] {
       cursor = cursor.plus({ days: 1 });
     }
   }
-  return dates.filter((date) => date.weekday >= 1 && date.weekday <= 5);
+  return dates;
 }
 
 function parseHm(hm: string): { hour: number; minute: number } {
@@ -37,37 +39,105 @@ function firstOccurrence(planStart: DateTime, weekday: number): DateTime {
   return planStart.plus({ days: delta });
 }
 
-function eventDescription(lesson: Lesson): string {
-  const lines = [
-    `Nauczyciel: ${lesson.teacher || "—"}`,
-    `Sala: ${lesson.roomLabel || lesson.room || "—"}`,
-    `Lekcja: ${lesson.lessonNo}`,
-    `Dzień: ${lesson.weekdayName}`,
-    `Klasa: ${lesson.classLabel}`,
-  ];
-  if (lesson.group) lines.push(`Grupa: ${lesson.group}`);
-  return lines.join("\n");
+function feedPathKey(feed: CalendarFeed): string {
+  return feed.path.map(pathSlug).join("-");
+}
+
+function eventId(
+  calendarId: string,
+  feed: CalendarFeed,
+  event: CalendarEvent,
+): string {
+  return `${calendarId}-${feedPathKey(feed)}-${event.uidKey}@planomat`;
+}
+
+function addWeeklyEvent(
+  calendar: ReturnType<typeof ical>,
+  feed: CalendarFeed,
+  event: WeeklyEvent,
+  options: {
+    calendarId: string;
+    zone: string;
+    planStart: DateTime;
+    until: DateTime;
+    holidays: DateTime[];
+  },
+): void {
+  const startHm = parseHm(event.start);
+  const endHm = parseHm(event.end);
+  const first = firstOccurrence(options.planStart, event.weekday);
+  const start = first.set(startHm);
+  const end = first.set(endHm);
+  const exclude = options.holidays
+    .filter((date) => date.weekday === event.weekday)
+    .map((date) => date.set(startHm));
+
+  calendar.createEvent({
+    id: eventId(options.calendarId, feed, event),
+    start,
+    end,
+    stamp: options.planStart.toUTC(),
+    timezone: options.zone,
+    summary: event.summary,
+    description: event.description,
+    location: event.location,
+    repeating: {
+      freq: ICalEventRepeatingFreq.WEEKLY,
+      until: options.until.toUTC(),
+      exclude,
+    },
+  });
+}
+
+function addOneOffEvent(
+  calendar: ReturnType<typeof ical>,
+  feed: CalendarFeed,
+  event: OneOffEvent,
+  options: { calendarId: string; zone: string; stamp: DateTime },
+): void {
+  const day = DateTime.fromISO(event.date, { zone: options.zone }).startOf("day");
+  const allDay = !event.start || !event.end;
+  const start = allDay ? day : day.set(parseHm(event.start!));
+  const end = allDay ? day : day.set(parseHm(event.end!));
+
+  calendar.createEvent({
+    id: eventId(options.calendarId, feed, event),
+    start,
+    end,
+    stamp: options.stamp.toUTC(),
+    ...(allDay ? { allDay: true } : { timezone: options.zone }),
+    summary: event.summary,
+    description: event.description,
+    location: event.location,
+  });
 }
 
 export function toIcs(
   feed: CalendarFeed,
   options: {
     planStart: string;
-    schoolId: string;
+    calendarId: string;
     displayName: string;
-    config: SchoolCalendarConfig;
+    config: CalendarConfig;
   },
 ): string {
-  const { config, schoolId, displayName } = options;
+  const { config, calendarId, displayName } = options;
   const zone = config.timezone;
   const planStart = DateTime.fromISO(options.planStart, { zone }).startOf("day");
-  const until = DateTime.fromISO(config.yearEnd, { zone }).endOf("day");
-  const holidays = expandHolidays(config.holidays, zone);
-  const slug = classSlug(feed.className);
+  const hasWeekly = feed.events.some((event) => event.kind === "weekly");
+  if (hasWeekly && !config.yearEnd) {
+    throw new Error(
+      `Kalendarz ${displayName} ma wydarzenia cotygodniowe, ale brak yearEnd w konfiguracji`,
+    );
+  }
+  const until = config.yearEnd
+    ? DateTime.fromISO(config.yearEnd, { zone }).endOf("day")
+    : planStart;
+  const holidays = expandHolidays(config.holidays ?? [], zone);
 
   const calendar = ical({
     name: feed.title,
-    prodId: { company: "planlekcji", product: displayName, language: "PL" },
+    prodId: { company: "planomat", product: displayName, language: "PL" },
     timezone: {
       name: zone,
       generator: getVtimezoneComponent,
@@ -75,30 +145,21 @@ export function toIcs(
     ttl: 3600,
   });
 
-  for (const lesson of feed.lessons) {
-    const startHm = parseHm(lesson.start);
-    const endHm = parseHm(lesson.end);
-    const first = firstOccurrence(planStart, lesson.weekday);
-    const start = first.set(startHm);
-    const end = first.set(endHm);
-    const exclude = holidays
-      .filter((date) => date.weekday === lesson.weekday)
-      .map((date) => date.set(startHm));
-
-    calendar.createEvent({
-      id: `${schoolId}-${slug}-${feed.groupId}-${lesson.weekday}-${lesson.lessonNo}@planlekcji`,
-      start,
-      end,
-      stamp: planStart.toUTC(),
-      timezone: zone,
-      summary: lesson.subject,
-      description: eventDescription(lesson),
-      location: lesson.roomLabel || undefined,
-      repeating: {
-        freq: ICalEventRepeatingFreq.WEEKLY,
-        until: until.toUTC(),
-        exclude,
-      },
+  for (const event of feed.events) {
+    if (event.kind === "weekly") {
+      addWeeklyEvent(calendar, feed, event, {
+        calendarId,
+        zone,
+        planStart,
+        until,
+        holidays,
+      });
+      continue;
+    }
+    addOneOffEvent(calendar, feed, event, {
+      calendarId,
+      zone,
+      stamp: planStart,
     });
   }
 
