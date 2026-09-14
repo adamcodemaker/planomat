@@ -5,6 +5,7 @@ export type Sp143Config = {
   yearEnd: string;
   defaultPlanStart: string;
   schoolSite: string;
+  address: string;
   subjectAliases: Record<string, string>;
   roomAliases: Record<string, string>;
   bells: Record<string, [string, string]>;

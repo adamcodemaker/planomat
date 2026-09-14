@@ -3,6 +3,7 @@
   "yearEnd": "2027-06-25",
   "defaultPlanStart": "2026-09-14",
   "schoolSite": "https://www.sp143.waw.pl",
+  "address": "Aleja Stanów Zjednoczonych 27, 03-947 Warszawa",
   "subjectAliases": {
     "j. polsk": "j. polski",
     "j. angie": "j. angielski",
@@ -22,8 +23,8 @@
     "wf": "WF"
   },
   "roomAliases": {
-    "-1": "sala plastyczna",
-    "-7": "sala techniczna"
+    "-1": "plastyczna",
+    "-7": "techniczna"
   },
   "bells": {
     "1": ["08:00", "08:45"],

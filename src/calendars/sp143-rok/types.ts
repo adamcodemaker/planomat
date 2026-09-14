@@ -1,6 +1,7 @@
 export type Sp143RokConfig = {
   timezone: string;
   schoolSite: string;
+  address: string;
   calendarPage: string;
   fallbackDocx: string;
 };

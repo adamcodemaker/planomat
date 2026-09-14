@@ -18,8 +18,6 @@ function eventDescription(lesson: Lesson): string {
     `Nauczyciel: ${lesson.teacher || "—"}`,
     `Sala: ${lesson.roomLabel || lesson.room || "—"}`,
     `Lekcja: ${lesson.lessonNo}`,
-    `Dzień: ${lesson.weekdayName}`,
-    `Klasa: ${lesson.classLabel}`,
   ];
   if (lesson.group) lines.push(`Grupa: ${lesson.group}`);
   return lines.join("\n");
@@ -33,7 +31,7 @@ function toWeeklyEvent(lesson: Lesson): WeeklyEvent {
     end: lesson.end,
     summary: lesson.subject,
     description: eventDescription(lesson),
-    location: lesson.roomLabel || undefined,
+    location: sp143Config.address,
     uidKey: `${lesson.weekday}-${lesson.lessonNo}`,
   };
 }

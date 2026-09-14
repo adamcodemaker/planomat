@@ -1,6 +1,7 @@
 {
   "timezone": "Europe/Warsaw",
   "schoolSite": "https://www.sp143.waw.pl",
+  "address": "Aleja Stanów Zjednoczonych 27, 03-947 Warszawa",
   "calendarPage": "https://www.sp143.waw.pl/kalendarz-roku-szkolnego/",
   "fallbackDocx": "https://www.sp143.waw.pl/wp-content/uploads/2026/09/Kalendarz-roku-szkolnego-2026-27.docx"
 }

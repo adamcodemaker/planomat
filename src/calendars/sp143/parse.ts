@@ -148,7 +148,7 @@ function displaySubject(subjectRaw: string, config: Sp143Config): string {
 }
 
 function displayRoom(room: string, config: Sp143Config): string {
-  return config.roomAliases[room] ?? (room ? `sala ${room}` : "");
+  return config.roomAliases[room] ?? room;
 }
 
 export function pickVariant(

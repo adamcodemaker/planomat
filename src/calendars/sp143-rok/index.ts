@@ -43,7 +43,10 @@ export const sp143Rok: CalendarAdapter<Buffer> = {
       {
         path: ["rok"],
         title: `SP143 — kalendarz roku szkolnego ${parsed.yearLabel}`,
-        events: parsed.events,
+        events: parsed.events.map((event) => ({
+          ...event,
+          location: sp143RokConfig.address,
+        })),
       },
     ];
   },
