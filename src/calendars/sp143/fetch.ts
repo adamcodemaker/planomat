@@ -1,8 +1,8 @@
+import { searchWpMedia, USER_AGENT } from "../../core/wpMedia.ts";
 import { sp143Config } from "./config.ts";
 
 const DATE_IN_NAME_RE = /od-(\d{2})\.(\d{2})\.(\d{4})/;
-const USER_AGENT =
-  "Mozilla/5.0 (compatible; planomat/1.0; +https://github.com/)";
+const PLAN_FILE_RE = /Plan-oddzialow/i;
 
 export type LatestPlan = {
   url: string;
@@ -10,101 +10,38 @@ export type LatestPlan = {
   buffer: Buffer;
 };
 
-function absoluteUrl(href: string, base: string): string {
-  return new URL(href, base).toString();
-}
-
-function dateFromFilename(url: string): string | null {
-  const match = url.match(DATE_IN_NAME_RE);
+function dateFromFilename(name: string): string | null {
+  const match = name.match(DATE_IN_NAME_RE);
   if (!match) return null;
   const [, dd, mm, yyyy] = match;
   return `${yyyy}-${mm}-${dd}`;
 }
 
-function collectPlanUrls(html: string, base: string): string[] {
-  const urls = new Set<string>();
-  const patterns = [
-    /https?:\/\/[^"'\\\s>]+\.xlsx/gi,
-    /["']([^"']*\/wp-content\/uploads\/[^"']*\.xlsx)["']/gi,
-  ];
-
-  for (const pattern of patterns) {
-    for (const match of html.matchAll(pattern)) {
-      const raw = (match[1] ?? match[0]).replace(/&amp;/g, "&");
-      if (!/Plan-oddzialow/i.test(raw)) continue;
-      try {
-        urls.add(absoluteUrl(raw, base));
-      } catch {
-        /* ignore malformed */
-      }
-    }
-  }
-
-  return [...urls];
-}
-
-async function fetchText(url: string): Promise<string> {
-  const response = await fetch(url, {
-    headers: { "User-Agent": USER_AGENT, Accept: "text/html,application/xml" },
-  });
-  if (!response.ok) {
-    throw new Error(`Nie udało się pobrać ${url}: HTTP ${response.status}`);
-  }
-  return response.text();
-}
-
-async function discoverCandidatePages(site: string): Promise<string[]> {
-  const pages = new Set<string>([
-    site,
-    `${site}/`,
-    `${site}/feed/`,
-    `${site}/?s=plan+lekcji`,
-  ]);
-
-  try {
-    const feed = await fetchText(`${site}/feed/`);
-    const links = [...feed.matchAll(/<link>([^<]+)<\/link>/gi)].map((m) => m[1]);
-    const titles = [...feed.matchAll(/<title>([^<]+)<\/title>/gi)].map((m) =>
-      m[1].toLowerCase(),
-    );
-    for (let i = 0; i < links.length; i++) {
-      const title = titles[i] ?? "";
-      if (/plan lekcji|plan-lekcji/.test(title) || /plan lekcji/i.test(links[i])) {
-        pages.add(links[i]);
-      }
-    }
-    for (const link of links.slice(0, 8)) pages.add(link);
-  } catch {
-    /* RSS jest pomocniczy */
-  }
-
-  return [...pages];
-}
-
 export async function findLatestPlanUrl(
   site = sp143Config.schoolSite,
 ): Promise<{ url: string; validFrom: string }> {
-  const pages = await discoverCandidatePages(site);
-  const found = new Set<string>();
+  const files = await searchWpMedia(site, "Plan-oddzialow");
+  const plans = files.filter(
+    (file) => PLAN_FILE_RE.test(file.filename) && /\.xlsx$/i.test(file.filename),
+  );
 
-  for (const page of pages) {
-    try {
-      const html = await fetchText(page);
-      for (const url of collectPlanUrls(html, site)) found.add(url);
-    } catch {
-      /* pomiń niedostępne strony */
-    }
+  if (plans.length === 0) {
+    throw new Error(
+      "Nie znaleziono pliku Plan-oddzialow*.xlsx w bibliotece mediów szkoły",
+    );
   }
 
-  if (found.size === 0) {
-    throw new Error("Nie znaleziono pliku Plan-oddzialow*.xlsx na stronie szkoły");
-  }
-
-  const ranked = [...found].map((url) => ({
-    url,
-    validFrom: dateFromFilename(url) ?? "1970-01-01",
+  const ranked = plans.map((file) => ({
+    url: file.url,
+    validFrom: dateFromFilename(file.filename) ?? "1970-01-01",
+    uploadedAt: file.uploadedAt,
   }));
-  ranked.sort((a, b) => b.validFrom.localeCompare(a.validFrom) || a.url.localeCompare(b.url));
+  ranked.sort(
+    (a, b) =>
+      b.validFrom.localeCompare(a.validFrom) ||
+      b.uploadedAt.localeCompare(a.uploadedAt) ||
+      a.url.localeCompare(b.url),
+  );
   return ranked[0];
 }
 
